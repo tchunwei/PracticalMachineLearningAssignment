@@ -1,0 +1,81 @@
+---
+title: "Practical Machine Learning Assignment"
+author: "Tang Chun Wei"
+date: "December 23, 2015"
+output: html_document
+---
+
+## Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+  
+## Loading and Preprocessing of Data
+We download the dataset and load both the training set and testing set for prediction
+```{r}
+# read the csv file
+training <- read.csv("./pml-training.csv", na.strings=c("NA","#DIV/0!", ""))
+testing <- read.csv("./pml-testing.csv", na.strings=c("NA","#DIV/0!", ""))
+```
+
+Next, we split the training data further into 60% for training, and 40% for validation of our model
+```{r}
+library(caret)
+set.seed(123)
+
+# partition data into train and test set
+inTrain <- createDataPartition(training$classe, p=0.6, list=FALSE)
+training.train <- training[inTrain, ]
+training.test <- training[-inTrain, ]
+```
+
+Before proceed with the model training, we try to exclude near zero variance features, columns with 40% or more na values, and columns that we think is irrelevant to the prediction outcome
+```{r}
+# exclude near zero variance features
+nzr <- nearZeroVar(training.train)
+training.train <- training.train[, -nzr]
+
+# exclude columns with 40% or more na values
+naLength <- sapply(training.train, function(x) {
+    sum(!(is.na(x) | x == ""))
+})
+naCols <- names(naLength[naLength < 0.6 * length(training.train$classe)])
+training.train <- training.train[, !names(training.train) %in% naCols]
+
+# exclude unrelated cols
+colnames(training.train)
+unrelatedCols <- c("X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp", "new_window", "num_window")
+training.train <- training.train[, !names(training.train) %in% unrelatedCols]
+```
+  
+## Model Training
+We use random forest to build our model on the 60% train set
+```{r}
+library(randomForest)
+model <- randomForest(classe ~ ., data = training.train, importance = TRUE, ntrees = 10)
+#model <- train(classe ~ ., data=training.train, method="rf")
+```
+  
+## Model validation (Out-of-Sample)
+We use the 40% test set for the model validation
+```{r}
+pred <- predict(model, training.test)
+confusionMatrix(pred, training.test$classe)
+```
+Based on the result above, our accuracy for the training model achive 99.45%.
+  
+## Predict with test-set
+Now we use the test set to predict the classe of the test set
+```{r}
+answers <- predict(model, testing)
+answers
+```
+Write in into files for submission
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(answers)
+```
